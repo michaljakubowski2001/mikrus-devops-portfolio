@@ -29,7 +29,7 @@
       },
       "targets": [
         {
-          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))",
+          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{job=\"node-host\",mode=\"idle\"}[5m])))",
           "refId": "A"
         }
       ],
@@ -57,7 +57,7 @@
       },
       "targets": [
         {
-          "expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)",
+          "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"node-host\"} / node_memory_MemTotal_bytes{job=\"node-host\"})",
           "refId": "A"
         }
       ],
@@ -85,7 +85,7 @@
       },
       "targets": [
         {
-          "expr": "100 * (1 - node_filesystem_avail_bytes{mountpoint=\"/\",fstype!=\"rootfs\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!=\"rootfs\"})",
+          "expr": "100 * (1 - node_filesystem_avail_bytes{job=\"node-host\",mountpoint=\"/\",fstype!=\"rootfs\"} / node_filesystem_size_bytes{job=\"node-host\",mountpoint=\"/\",fstype!=\"rootfs\"})",
           "refId": "A"
         }
       ],
@@ -113,7 +113,7 @@
       },
       "targets": [
         {
-          "expr": "sum(up)",
+          "expr": "sum(up{job!=\"node\"})",
           "refId": "A"
         }
       ],
@@ -141,7 +141,7 @@
       },
       "targets": [
         {
-          "expr": "node_memory_MemAvailable_bytes",
+          "expr": "node_memory_MemAvailable_bytes{job=\"node-host\"}",
           "refId": "A"
         }
       ],
@@ -169,7 +169,7 @@
       },
       "targets": [
         {
-          "expr": "rate(node_network_receive_bytes_total{device=\"eth0\"}[5m])",
+          "expr": "rate(node_network_receive_bytes_total{job=\"node-host\",device=\"eth0\"}[5m])",
           "refId": "A"
         }
       ],
@@ -197,7 +197,7 @@
       },
       "targets": [
         {
-          "expr": "node_load1",
+          "expr": "node_load1{job=\"node-host\"}",
           "refId": "A"
         }
       ],

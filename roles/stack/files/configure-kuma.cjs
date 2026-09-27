@@ -15,7 +15,8 @@ function checked(result) {
     if (!result.ok) throw new Error(result.msg || 'Kuma API request failed');
     return result;
 }
-socket.on('connect', async () => {
+// Wait for the server's asynchronous handshake before sending API events.
+socket.once('info', async () => {
     try {
         let changed = false;
         const setup = await call('setup', 'admin', config.password);

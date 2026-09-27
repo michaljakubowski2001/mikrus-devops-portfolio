@@ -1,5 +1,8 @@
 ---
 project_root: /opt/devops-portfolio
+# Mikrus LXCFS reports container memory limits to a containerized exporter.
+# Read the existing provider exporter for accurate VPS-level memory metrics.
+host_metrics_port: 40455
 vaultwarden_url: https://srv70-20157.wykr.es
 kuma_url: https://srv70-30157.wykr.es
 grafana_url: https://amy157-20158.mikrus.cloud
@@ -14,9 +17,9 @@ memory_limits:
   nginx: 64M
   vaultwarden: 256M
   kuma: 384M
-  prometheus: 384M
+  prometheus: 256M
   node_exporter: 64M
-  grafana: 384M
+  grafana: 512M
 kuma_monitors:
   - name: Vaultwarden
     url: http://127.0.0.1:18080/alive

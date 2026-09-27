@@ -108,6 +108,8 @@
         GF_USERS_ALLOW_SIGN_UP: 'false'
         GF_ANALYTICS_REPORTING_ENABLED: 'false'
         GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+        GF_PLUGINS_PREINSTALL_DISABLED: 'true'
+        GOMEMLIMIT: 400MiB
         GF_METRICS_ENABLED: 'true'
       volumes:
         - "{{ project_root }}/data/grafana:/var/lib/grafana"
@@ -127,6 +129,7 @@
     - name: kuma
       image: kuma
       env:
+        UPTIME_KUMA_DB_TYPE: sqlite
         UPTIME_KUMA_HOST: 127.0.0.1
         UPTIME_KUMA_PORT: '13001'
       volumes:
@@ -137,8 +140,8 @@
     url: "{{ item }}"
     status_code: 200
   register: stack_ready
-  retries: 30
-  delay: 2
+  retries: 60
+  delay: 5
   until: stack_ready.status == 200
   loop:
     - http://127.0.0.1:18080/alive
@@ -187,3 +190,42 @@
     volumes:
       - "{{ project_root }}/config/nginx.conf:/etc/nginx/nginx.conf:ro"
     restart: "{{ stack_configuration.results[0].changed }}"
+
+- name: Verify the reverse proxy serves application health endpoints
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    status_code: 200
+  register: stack_proxy_ready
+  retries: 10
+  delay: 2
+  until: stack_proxy_ready.status == 200
+  loop:
+    - http://127.0.0.1:20157/alive
+    - http://127.0.0.1:30157/api/status-page/portfolio
+    - http://127.0.0.1:20158/api/health
+
+- name: Wait for all four Prometheus targets to be healthy
+  ansible.builtin.uri:
+    url: http://127.0.0.1:19090/api/v1/targets
+    return_content: true
+  register: stack_scrapes
+  retries: 15
+  delay: 3
+  until:
+    - stack_scrapes.json.data.activeTargets | length == 4
+    - stack_scrapes.json.data.activeTargets | map(attribute='health') | unique | list == ['up']
+
+- name: Read the VPS memory metric
+  ansible.builtin.uri:
+    url: 'http://127.0.0.1:19090/api/v1/query?query=node_memory_MemTotal_bytes%7Bjob%3D%22node-host%22%7D'
+    return_content: true
+  register: stack_host_memory
+
+- name: Ensure the dashboard measures VPS memory rather than the exporter cgroup
+  ansible.builtin.assert:
+    that:
+      - stack_host_memory.json.data.result | length == 1
+      - >-
+        ((stack_host_memory.json.data.result[0].value[1] | float / 1048576)
+        - ansible_facts.memtotal_mb) | abs < 64
+    fail_msg: The node job must report VPS memory, not the container memory ceiling.
