@@ -1,8 +1,10 @@
 # Mikrus DevOps Portfolio
 
+[![Validate and deploy](https://github.com/michaljakubowski2001/mikrus-devops-portfolio/actions/workflows/deploy.yml/badge.svg)](https://github.com/michaljakubowski2001/mikrus-devops-portfolio/actions/workflows/deploy.yml)
+
 An Ansible-managed application and observability platform for a **2 GB RAM / 25 GB disk VPS**.
 
-> Deployment is pending authorization to install Docker and add an SSH deployment key outside the project directory. The URLs below are planned endpoints, not verified live services. See [verification evidence](docs/verification.md).
+> Deployed on Mikrus with verified public HTTPS endpoints. See [verification evidence](docs/verification.md) for idempotence, resource measurements and CI results.
 
 ## Problem
 
@@ -20,7 +22,8 @@ flowchart LR
     Nginx -->|loopback 13001| Kuma[Uptime Kuma]
     Nginx -->|loopback 13000| Grafana[Grafana]
     Grafana -->|loopback 19090| Prom[Prometheus / 7 days, 2 GB]
-    Prom -->|scrape loopback 19100| Node[node_exporter]
+    Prom -->|scrape loopback 19100| Node[Project node_exporter / container view]
+    Prom -->|read-only scrape loopback 40455| Host[Existing Mikrus exporter / VPS view]
     Prom -->|scrape| Grafana
     Kuma -->|HTTP health checks| VW
     Kuma -->|HTTP health checks| Grafana
@@ -29,12 +32,12 @@ flowchart LR
     Ansible --> Containers[Docker containers]
 ```
 
-| Service | Planned public endpoint | Memory ceiling |
+| Service | Public endpoint | Memory ceiling |
 | --- | --- | --- |
 | Vaultwarden | https://srv70-20157.wykr.es | 256 MiB |
 | Uptime Kuma | https://srv70-30157.wykr.es/status/portfolio | 384 MiB |
-| Grafana | https://amy157-20158.mikrus.cloud/d/mikrus-infrastructure | 384 MiB |
-| Prometheus | Loopback only, port 19090 | 384 MiB |
+| Grafana | https://amy157-20158.mikrus.cloud/d/mikrus-infrastructure | 512 MiB |
+| Prometheus | Loopback only, port 19090 | 256 MiB |
 | node_exporter | Loopback only, port 19100 | 64 MiB |
 | Nginx | Public application ingress | 64 MiB |
 
@@ -46,6 +49,7 @@ flowchart LR
 - **Host networking:** this small Linux host uses loopback-bound application ports and an unprivileged Nginx process on high ports. This avoids Docker-published ports bypassing UFW, while simplifying IPv6 ingress. The trade-off is less network isolation between containers; they share the host network namespace. No container receives the Docker socket.
 - **Filesystem boundaries:** configuration and application data live under `/opt/devops-portfolio`. Docker packages, runtime storage and the dedicated SSH authorized key require explicitly approved system-level exceptions. node_exporter reads host filesystems through read-only mounts. Provider services are untouched.
 - **Secrets:** only encrypted Ansible Vault ciphertext is committed. The Vault password and private deploy key live in GitHub Actions Secrets and a local ignored `.secrets/` directory. Tasks that handle application credentials use `no_log`. Root and Docker administrators can still inspect runtime credentials.
+- **LXC-aware host metrics:** Mikrus uses LXCFS, so the project exporter sees its own 64 MiB container ceiling in `/proc/meminfo`. Prometheus scrapes the existing provider exporter on `127.0.0.1:40455` as job `node-host` for accurate VPS metrics, and the project container as `node-container`. No provider configuration is changed. Ansible verifies that the memory metric matches the VPS memory reported over SSH. On another host, set `host_metrics_port` to a suitable host exporter (19100 is suitable where LXCFS does not virtualize these metrics).
 - **Access:** Vaultwarden registration is disabled; its admin endpoint is blocked by Nginx. Grafana permits anonymous read-only viewing of the portfolio dashboard; admin changes require credentials. Kuma is initialized on loopback before Nginx starts, so an unclaimed setup screen is not exposed.
 - **TLS:** Mikrus terminates public HTTPS and renews certificates. The hop from its proxy to this VPS is HTTP; this is not end-to-end encryption. Treat this Vaultwarden instance as a portfolio demo, not a store for real passwords, until origin TLS and access restrictions are implemented and verified.
 - **Deployment identity:** an independent Ed25519 key has `restrict` applied in `authorized_keys` to disable PTY, agent forwarding and port forwarding. Ansible still executes as root; this key is not a least-privilege sandbox. Pinning the known host key prevents trust-on-first-use in CI.
@@ -91,11 +95,11 @@ Required repository secrets:
 - `SSH_KNOWN_HOSTS`: the verified `[amy157.mikrus.xyz]:10157` host key.
 - `ANSIBLE_VAULT_PASSWORD`: password for the committed vault.
 
-The secrets have been populated using `gh secret set`. Enable `DEPLOY_ENABLED` only after the server accepts the deploy key and the initial deployment has passed.
+The secrets have been populated using `gh secret set`. The production deploy key has been authorized and initial deployment checks have passed. Deployment is enabled with repository variable `DEPLOY_ENABLED=true`.
 
 ### HTTPS
 
-The provider documents automatic HTTPS for [forwarded IPv4 ports](https://wiki.mikr.us/wspoldzielona_domena/) and [IPv6 ports](https://wiki.mikr.us/darmowa_subdomena_dla_vps/). Nginx listens on IPv4 and IPv6. These automatic domains should not need panel changes, but must pass the external smoke test before being considered ready.
+The provider documents automatic HTTPS for [forwarded IPv4 ports](https://wiki.mikr.us/wspoldzielona_domena/) and [IPv6 ports](https://wiki.mikr.us/darmowa_subdomena_dla_vps/). Nginx listens on IPv4 and IPv6. All three automatic domains passed the external smoke test without panel changes. The test validates application JSON and current Kuma heartbeat status, rejecting the provider’s misleading HTTP-200 error pages. Public HTTP is also reachable; use the HTTPS links above.
 
 If a custom subdomain is wanted: open the Mikrus panel → subdomains → add a subdomain → select `amy157` → set the backend port (20157 for Vaultwarden, 30157 for Kuma, 20158 for Grafana) → choose HTTP for the backend. Update the corresponding URL in `group_vars/all/main.yml`, then deploy and verify HTTPS again.
 
@@ -112,8 +116,16 @@ For a consistent application backup, stop the project containers, archive `/opt/
 
 ## Screenshots
 
-Actual deployment screenshots are pending. They will be recorded in `docs/screenshots/` after the live dashboard and status page have been verified. No mock screenshots are presented as operational evidence.
+Actual browser captures of this deployment:
+
+![Provisioned Grafana dashboard](docs/screenshots/grafana.png)
+
+![Uptime Kuma status page](docs/screenshots/uptime-kuma.png)
+
+![Vaultwarden login](docs/screenshots/vaultwarden.png)
+
+To refresh screenshots, install the optional `playwright` Python package and Google Chrome, then run `python scripts/capture-screenshots.py`.
 
 ## Verification
 
-See [the verification record](docs/verification.md) for observed facts, test results and remaining deployment gates.
+See [the verification record](docs/verification.md) for observed facts, test results and operational limitations.
