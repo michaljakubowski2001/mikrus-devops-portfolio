@@ -141,3 +141,10 @@ To refresh screenshots, install the optional `playwright` Python package and Goo
 See [the verification record](docs/verification.md) for observed facts, test results and operational limitations.
 
 ## What I learned
+
+- **A second run is a simple test.** CI runs the playbook twice, and the second run must report `changed=0`. When I changed the Grafana dashboard, the first run showed `changed=1` and the second showed `changed=0`. I learned that this check proves the playbook describes a final state, not a list of commands to repeat.
+- **A tag can change, a digest cannot.** I pinned every container image to a digest, not only to a version tag. I wrote a small script that finds the digest for each tag. I learned that this makes every deploy use the same images, but an update now needs a conscious step.
+- **A metric can look normal and still be wrong.** node_exporter first reported 64 MiB of memory instead of the server's 2 GiB. Mikrus is a container with LXCFS, so my exporter saw its own container limit. Now Prometheus reads host metrics from the provider's exporter, and Ansible compares the value with the real memory.
+- **Six services in 2 GB need a budget.** Grafana did not become ready in time with a 384 MiB limit. I gave it 512 MiB and lowered Prometheus from 384 MiB to 256 MiB, so the total stayed at 1,536 MiB. I also turned off plugin installation at startup. I learned to give every container a limit and to move memory inside a fixed budget.
+- **HTTP 200 does not mean the service works.** When a backend was down, the provider redirected to an error page that returned HTTP 200, so my smoke test could pass by mistake. Now curl does not follow redirects, and the test checks the JSON in the response.
+- **Do not hard-code host names in shared dashboards.** The network panel used `device="eth0"`. When I reused the role on AWS, the network card was called `ens5`, and the panel was empty. I changed the query to skip virtual interfaces (`lo`, `veth`, `docker`, bridges) and tested it on the live server first.
