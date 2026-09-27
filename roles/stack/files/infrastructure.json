@@ -169,7 +169,7 @@
       },
       "targets": [
         {
-          "expr": "rate(node_network_receive_bytes_total{job=\"node-host\",device=\"eth0\"}[5m])",
+          "expr": "rate(node_network_receive_bytes_total{job=\"node-host\",device!~\"lo|veth.*|docker.*|br-.*\"}[5m])",
           "refId": "A"
         }
       ],
