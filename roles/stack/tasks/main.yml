@@ -1,0 +1,189 @@
+---
+- name: Create application directories with explicit ownership
+  ansible.builtin.file:
+    path: "{{ project_root }}/{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.owner | default('root') }}"
+    mode: "0750"
+  loop:
+    - {path: config}
+    - {path: config/grafana, owner: '472'}
+    - {path: config/grafana/datasources, owner: '472'}
+    - {path: config/grafana/dashboards, owner: '472'}
+    - {path: dashboards, owner: '472'}
+    - {path: data}
+    - {path: data/vaultwarden}
+    - {path: data/kuma}
+    - {path: data/prometheus, owner: '65534'}
+    - {path: data/grafana, owner: '472'}
+
+- name: Render service configuration
+  ansible.builtin.template:
+    src: "{{ item.src }}.j2"
+    dest: "{{ project_root }}/{{ item.dest }}"
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.owner | default('root') }}"
+    mode: "0644"
+  loop:
+    - {src: nginx.conf, dest: config/nginx.conf}
+    - {src: prometheus.yml, dest: config/prometheus.yml}
+    - {src: datasources.yml, dest: config/grafana/datasources/default.yml, owner: '472'}
+    - {src: dashboards.yml, dest: config/grafana/dashboards/default.yml, owner: '472'}
+  register: stack_configuration
+
+- name: Provision the infrastructure dashboard
+  ansible.builtin.copy:
+    src: infrastructure.json
+    dest: "{{ project_root }}/dashboards/infrastructure.json"
+    owner: '472'
+    group: '472'
+    mode: "0644"
+
+- name: Run application containers
+  community.docker.docker_container:
+    name: "portfolio-{{ item.name }}"
+    image: "{{ images[item.image] }}"
+    state: started
+    restart_policy: unless-stopped
+    network_mode: host
+    memory: "{{ memory_limits[item.image] }}"
+    memory_swap: "{{ memory_limits[item.image] }}"
+    pids_limit: 256
+    log_driver: json-file
+    log_options:
+      max-size: 10m
+      max-file: '3'
+    security_opts: [no-new-privileges:true]
+    cap_drop: [ALL]
+    user: "{{ item.user | default(omit) }}"
+    env: "{{ item.env | default({}) }}"
+    command: "{{ item.command | default(omit) }}"
+    volumes: "{{ item.volumes | default([]) }}"
+    read_only: "{{ item.read_only | default(false) }}"
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=64m']
+    restart: "{{ item.restart | default(false) }}"
+  no_log: true
+  loop:
+    - name: node-exporter
+      image: node_exporter
+      user: '65534:65534'
+      read_only: true
+      command:
+        - --web.listen-address=127.0.0.1:19100
+        - --path.procfs=/host/proc
+        - --path.sysfs=/host/sys
+        - --path.rootfs=/host/root
+        - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($|/)
+      volumes:
+        - /proc:/host/proc:ro
+        - /sys:/host/sys:ro
+        - /:/host/root:ro,rslave
+    - name: prometheus
+      image: prometheus
+      user: '65534:65534'
+      read_only: true
+      restart: "{{ stack_configuration.results[1].changed }}"
+      command:
+        - --config.file=/etc/prometheus/prometheus.yml
+        - --storage.tsdb.path=/prometheus
+        - --storage.tsdb.retention.time=7d
+        - --storage.tsdb.retention.size=2GB
+        - --web.listen-address=127.0.0.1:19090
+      volumes:
+        - "{{ project_root }}/config/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+        - "{{ project_root }}/data/prometheus:/prometheus"
+    - name: grafana
+      image: grafana
+      user: '472:472'
+      restart: "{{ stack_configuration.results[2].changed or stack_configuration.results[3].changed }}"
+      env:
+        GF_SERVER_HTTP_ADDR: 127.0.0.1
+        GF_SERVER_HTTP_PORT: '13000'
+        GF_SERVER_ROOT_URL: "{{ grafana_url }}"
+        GF_SECURITY_ADMIN_USER: admin
+        GF_SECURITY_ADMIN_PASSWORD: "{{ vault_grafana_password }}"
+        GF_AUTH_ANONYMOUS_ENABLED: 'true'
+        GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+        GF_USERS_ALLOW_SIGN_UP: 'false'
+        GF_ANALYTICS_REPORTING_ENABLED: 'false'
+        GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+        GF_METRICS_ENABLED: 'true'
+      volumes:
+        - "{{ project_root }}/data/grafana:/var/lib/grafana"
+        - "{{ project_root }}/config/grafana:/etc/grafana/provisioning:ro"
+        - "{{ project_root }}/dashboards:/var/lib/grafana/dashboards:ro"
+    - name: vaultwarden
+      image: vaultwarden
+      env:
+        DOMAIN: "{{ vaultwarden_url }}"
+        ROCKET_ADDRESS: 127.0.0.1
+        ROCKET_PORT: '18080'
+        SIGNUPS_ALLOWED: 'false'
+        INVITATIONS_ALLOWED: 'false'
+        ADMIN_TOKEN: "{{ vault_vaultwarden_admin_token }}"
+      volumes:
+        - "{{ project_root }}/data/vaultwarden:/data"
+    - name: kuma
+      image: kuma
+      env:
+        UPTIME_KUMA_HOST: 127.0.0.1
+        UPTIME_KUMA_PORT: '13001'
+      volumes:
+        - "{{ project_root }}/data/kuma:/app/data"
+
+- name: Wait for private application endpoints
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    status_code: 200
+  register: stack_ready
+  retries: 30
+  delay: 2
+  until: stack_ready.status == 200
+  loop:
+    - http://127.0.0.1:18080/alive
+    - http://127.0.0.1:13001/
+    - http://127.0.0.1:13000/api/health
+    - http://127.0.0.1:19090/-/ready
+    - http://127.0.0.1:19100/metrics
+
+- name: Install the Kuma bootstrap script
+  ansible.builtin.copy:
+    src: configure-kuma.cjs
+    dest: "{{ project_root }}/data/kuma/configure.cjs"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Initialize Kuma before exposing the setup endpoint
+  community.docker.docker_container_exec:
+    container: portfolio-kuma
+    argv: [node, /app/data/configure.cjs]
+    stdin: "{{ {'password': vault_kuma_password, 'monitors': kuma_monitors} | to_json }}"
+  register: stack_kuma_setup
+  changed_when: "'\"changed\":true' in stack_kuma_setup.stdout"
+  failed_when: stack_kuma_setup.rc != 0
+  no_log: true
+
+- name: Run the public reverse proxy
+  community.docker.docker_container:
+    name: portfolio-nginx
+    image: "{{ images.nginx }}"
+    state: started
+    restart_policy: unless-stopped
+    network_mode: host
+    memory: "{{ memory_limits.nginx }}"
+    memory_swap: "{{ memory_limits.nginx }}"
+    pids_limit: 64
+    user: '101:101'
+    read_only: true
+    cap_drop: [ALL]
+    security_opts: [no-new-privileges:true]
+    log_driver: json-file
+    log_options:
+      max-size: 10m
+      max-file: '3'
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=32m']
+    volumes:
+      - "{{ project_root }}/config/nginx.conf:/etc/nginx/nginx.conf:ro"
+    restart: "{{ stack_configuration.results[0].changed }}"

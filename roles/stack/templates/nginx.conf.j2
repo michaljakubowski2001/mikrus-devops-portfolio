@@ -1,0 +1,41 @@
+worker_processes 1;
+pid /tmp/nginx.pid;
+events { worker_connections 512; }
+http {
+    access_log /dev/stdout;
+    error_log /dev/stderr warn;
+    server_tokens off;
+    client_body_temp_path /tmp/client_temp;
+    proxy_temp_path /tmp/proxy_temp;
+    map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 90s;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy same-origin always;
+    server {
+        listen 20157;
+        listen [::]:20157;
+        server_name {{ vaultwarden_url | urlsplit('hostname') }};
+        client_max_body_size 25m;
+        location /admin { return 403; }
+        location / { proxy_pass http://127.0.0.1:18080; }
+    }
+    server {
+        listen 30157;
+        listen [::]:30157;
+        server_name {{ kuma_url | urlsplit('hostname') }};
+        location / { proxy_pass http://127.0.0.1:13001; }
+    }
+    server {
+        listen 20158;
+        listen [::]:20158;
+        server_name {{ grafana_url | urlsplit('hostname') }};
+        location / { proxy_pass http://127.0.0.1:13000; }
+    }
+}
