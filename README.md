@@ -6,6 +6,16 @@ An Ansible-managed application and observability platform for a **2 GB RAM / 25 
 
 > Deployed on Mikrus with verified public HTTPS endpoints. See [verification evidence](docs/verification.md) for idempotence, resource measurements and CI results.
 
+## Highlights
+
+- **Idempotent Ansible, enforced in CI:** every push to `main` deploys, runs the playbook a second time and fails unless it reports `changed=0`, then smoke-tests the public HTTPS endpoints.
+- **Reproducible and secret-safe:** container images are pinned to immutable digests, and application secrets are committed only as Ansible Vault ciphertext.
+- **Six services in 2 GB:** Nginx, Vaultwarden, Uptime Kuma, Prometheus, node_exporter and Grafana run within a 1,536 MiB memory budget, with per-container ceilings.
+- **Monitoring as code:** Prometheus scrape config, a provisioned Grafana dashboard and Uptime Kuma monitors are all created by Ansible.
+- **LXCFS-aware metrics:** the container exporter would report its own 64 MiB limit as host memory, so host metrics come from the provider's exporter and Ansible asserts the value matches the real VPS memory.
+
+**Continuation:** [aws-devops-portfolio](https://github.com/michaljakubowski2001/aws-devops-portfolio) — the same roles deployed on AWS with Terraform and SSM.
+
 ## Problem
 
 A small VPS must run a useful application and provide enough operational visibility to diagnose failures without exhausting memory or disk. Manual configuration makes recovery and changes hard to reproduce.
@@ -129,3 +139,5 @@ To refresh screenshots, install the optional `playwright` Python package and Goo
 ## Verification
 
 See [the verification record](docs/verification.md) for observed facts, test results and operational limitations.
+
+## What I learned
