@@ -11,7 +11,9 @@ Status: **implementation prepared; deployment is blocked on host-change authoriz
 - IPv6: `2a01:4f9:3070:1984::157`.
 - Existing provider services listen on 40455 and 40456; they are outside project scope.
 - UFW was already inactive; nftables contains accept policies. Neither was changed.
-- Local `ansible-lint --offline`: production profile, zero failures and warnings.
+- Local `ansible-lint --offline`: production profile, zero failures and warnings (19 files).
+- Both playbooks pass Ansible syntax checks. Tracked files were checked against all generated plaintext credentials and contain none.
+- GitHub Actions [run 36319328886](https://github.com/michaljakubowski2001/mikrus-devops-portfolio/actions/runs/36319328886): lint passed; deploy was intentionally skipped because host authorization is pending.
 - Deploy key and Vault password have been created locally and stored as GitHub Actions secrets.
 
 ## Pending evidence
