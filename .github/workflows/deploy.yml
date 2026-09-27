@@ -1,0 +1,69 @@
+---
+name: Validate and deploy
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: portfolio-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install pinned dependencies
+        run: |
+          pip install -r requirements.txt
+          ansible-galaxy collection install -r requirements.yml
+      - name: Lint Ansible
+        run: ansible-lint
+  deploy:
+    needs: lint
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Install pinned dependencies
+        run: |
+          pip install -r requirements.txt
+          ansible-galaxy collection install -r requirements.yml
+      - name: Prepare deploy credentials
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+        run: |
+          umask 077
+          mkdir -p "$HOME/.ssh" .secrets
+          printf '%s\n' "$DEPLOY_KEY" > .secrets/deploy-key
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          printf '%s\n' "$VAULT_PASSWORD" > .secrets/vault-password
+      - name: Deploy over IPv4 and verify idempotence
+        env:
+          ANSIBLE_PRIVATE_KEY_FILE: .secrets/deploy-key
+          ANSIBLE_VAULT_PASSWORD_FILE: .secrets/vault-password
+          ANSIBLE_NOCOLOR: '1'
+        run: |
+          set -euo pipefail
+          ansible-playbook site.yml
+          ansible-playbook site.yml | tee /tmp/idempotence.log
+          python scripts/check-idempotence.py /tmp/idempotence.log
+      - name: Check public HTTPS endpoints
+        run: bash scripts/smoke-test.sh
+      - name: Remove temporary credentials
+        if: always()
+        run: rm -f .secrets/deploy-key .secrets/vault-password "$HOME/.ssh/known_hosts"

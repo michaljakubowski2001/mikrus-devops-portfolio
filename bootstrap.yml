@@ -1,0 +1,13 @@
+---
+- name: Bootstrap the explicitly approved host prerequisites
+  hosts: portfolio
+  gather_facts: false
+  pre_tasks:
+    - name: Require authorization for changes outside the project directory
+      ansible.builtin.assert:
+        that: bootstrap_host_changes_approved | default(false) | bool
+        fail_msg: >-
+          Installing Docker and adding a root SSH key modify system paths.
+          Obtain explicit authorization and pass -e bootstrap_host_changes_approved=true.
+  roles:
+    - bootstrap
