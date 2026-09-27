@@ -1,0 +1,19 @@
+---
+project_root: /opt/devops-portfolio
+vaultwarden_url: https://srv70-20157.wykr.es
+kuma_url: https://srv70-30157.wykr.es
+grafana_url: https://amy157-20158.mikrus.cloud
+images:
+  nginx: nginx:1.28.0-alpine
+  vaultwarden: vaultwarden/server:1.37.3
+  kuma: louislam/uptime-kuma:2.5.5
+  prometheus: prom/prometheus:v3.15.0
+  node_exporter: prom/node-exporter:v1.12.1
+  grafana: grafana/grafana:13.2.2
+memory_limits:
+  nginx: 64M
+  vaultwarden: 256M
+  kuma: 384M
+  prometheus: 384M
+  node_exporter: 64M
+  grafana: 384M

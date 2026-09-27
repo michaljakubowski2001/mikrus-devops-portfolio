@@ -1,0 +1,12 @@
+---
+- name: Verify Docker is available
+  community.docker.docker_host_info:
+  register: platform_docker
+
+- name: Create the project directory
+  ansible.builtin.file:
+    path: "{{ project_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"

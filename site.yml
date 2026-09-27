@@ -1,0 +1,8 @@
+---
+- name: Deploy the resource-constrained DevOps portfolio
+  hosts: portfolio
+  roles:
+    - role: platform
+      tags: [platform]
+    - role: stack
+      tags: [stack]
