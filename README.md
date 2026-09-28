@@ -2,6 +2,12 @@
 
 [![Validate and deploy](https://github.com/michaljakubowski2001/mikrus-devops-portfolio/actions/workflows/deploy.yml/badge.svg)](https://github.com/michaljakubowski2001/mikrus-devops-portfolio/actions/workflows/deploy.yml)
 
+> **TL;DR** – Six self-hosted services (Nginx, Vaultwarden, Uptime Kuma, Prometheus, node_exporter, Grafana) on a 2 GB VPS, fully managed by Ansible.
+> - Every push to `main` deploys through GitHub Actions and fails unless the second Ansible run reports `changed=0`.
+> - Secrets in Ansible Vault, images pinned to digests, a memory limit for every container.
+> - Live: [status page](https://srv70-30157.wykr.es/status/portfolio) · [Grafana dashboard](https://amy157-20158.mikrus.cloud/d/mikrus-infrastructure)
+> - Continued on AWS: [aws-devops-portfolio](https://github.com/michaljakubowski2001/aws-devops-portfolio)
+
 An Ansible-managed application and observability platform for a **2 GB RAM / 25 GB disk VPS**.
 
 > Deployed on Mikrus with verified public HTTPS endpoints. See [verification evidence](docs/verification.md) for idempotence, resource measurements and CI results.
